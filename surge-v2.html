@@ -504,6 +504,10 @@ let S=null;
 /* storage choice: 'device' or 'folder'. Folder handle lives in memory + IndexedDB. */
 let store={mode:'device',folderName:'',handle:null};
 let storeReady=false;
+let dirty=false;
+let writing=false;
+let writeQueued=false;
+let lastHydratedAt=0;
 
 function normalize(o){
   const b=blank();
@@ -517,12 +521,21 @@ function normalize(o){
 }
 function load(){
   let raw=null;
+  let savedAt=0;
+  let storeSetting=null;
   try{
     raw=localStorage.getItem(KEY)||localStorage.getItem(OLD_KEY);
-    const sm=localStorage.getItem('surge.store');
-    if(sm){ try{ const p=JSON.parse(sm); if(p&&p.mode==='folder'){ store.mode='folder'; store.folderName=p.folderName||''; } }catch(e){} }
+    savedAt=+localStorage.getItem(KEY+'.ts')||0;
+    storeSetting=localStorage.getItem('surge.store');
+    if(storeSetting){ try{ const p=JSON.parse(storeSetting);
+      if(p&&p.mode==='folder'){ store.mode='folder'; store.folderName=p.folderName||''; } }catch(e){} }
   }catch(e){}
   try{ S=raw?normalize(JSON.parse(raw)):blank(); }catch(e){ S=blank(); }
+  if(S&&storeSetting){
+    try{ const p=JSON.parse(storeSetting);
+      S.savedAt=(p&&typeof p.savedAt==='number')?p.savedAt:savedAt;
+    }catch(e){ S.savedAt=savedAt; }
+  }
   try{
     const tv=localStorage.getItem(THEME_KEY)||localStorage.getItem(OLD_THEME);
     if(tv==='light'||tv==='dark') document.documentElement.dataset.theme=tv;
@@ -531,6 +544,9 @@ function load(){
 function save(){
   try{ localStorage.setItem(KEY,JSON.stringify(S)); localStorage.removeItem(OLD_KEY); }
   catch(e){ toast('Could not save. Storage is full.'); }
+  S.savedAt=Date.now();
+  dirty=true;
+  try{ localStorage.setItem(KEY+'.ts',String(S.savedAt)); }catch(e){}
   if(store.mode==='folder'&&store.handle) writeFolderBackup();
 }
 function setTheme(tv){
@@ -1394,26 +1410,28 @@ function viewYou(){
     </div>
     <div class="panel sect">
       <div class="head"><h2>Where the log lives</h2><span class="tiny muted">${store.mode==='folder'?'your folder':'this device'}</span></div>
-      <div class="listrow"><div><div class="nm">On this device</div><div class="sub">Fast, offline, disappears if the browser data is cleared.</div></div>
+      <div class="listrow"><div><div class="nm">On this device</div><div class="sub">Works offline. Browser storage is protected from routine cleanup when the browser allows it; a copy still matters if the whole browser is reset.</div></div>
         <button class="btn btn--sm" data-act="store-device" aria-pressed="${store.mode==='device'}">${store.mode==='device'?'Current':'Use'}</button></div>
-      <div class="listrow"><div><div class="nm">My own folder ${store.folderName?'&middot; '+esc(store.folderName):''}</div><div class="sub">${folderSupported()?'Pick a folder in Drive, OneDrive, or iCloud. The log saves there as <span style="white-space:nowrap">surge-log.json</span>.':'This browser cannot pick a folder (Safari). Use the file buttons below instead.'}</div></div>
+      <div class="listrow"><div><div class="nm">My own folder ${store.folderName?'&middot; '+esc(store.folderName):''}</div><div class="sub">${folderSupported()?'Pick a folder in Drive, OneDrive, or iCloud. SURGE saves the log there automatically as <span style="white-space:nowrap">surge-log.json</span>, and restores it after a browser reset.':'This browser cannot pick a folder (Safari). Use Send a copy or Open a saved log instead.'}</div></div>
         ${folderSupported()
           ? `<button class="btn btn--sm" data-act="store-pick">${store.mode==='folder'?'Change':'Pick'}</button>`
           : `<button class="btn btn--sm" data-act="export">Save</button>`}</div>
-      ${store.mode==='folder'&&store.handle?`<div class="listrow"><div><div class="nm">Write now</div><div class="sub">Push the current log to that folder.</div></div>
-        <button class="btn btn--sm" data-act="store-write">Push</button></div>`:''}
-      <div class="listrow"><div><div class="nm">Send a copy</div><div class="sub">Emails you the log file. Send it anywhere you keep files.</div></div>
+      ${store.mode==='folder'&&store.handle?`<div class="listrow"><div><div class="nm">Sync now</div><div class="sub">Push the current log to that folder right now.</div></div>
+        <button class="btn btn--sm" data-act="store-write">Sync</button></div>`:''}
+      <div class="listrow"><div><div class="nm">Send a copy</div><div class="sub">Opens the share sheet or saves a JSON copy. Store it wherever you like.</div></div>
         <button class="btn btn--sm" data-act="mail-backup">Send</button></div>
-      <div class="listrow"><div><div class="nm">Open a saved log</div><div class="sub">Restores sessions from a saved file.</div></div>
+      <div class="listrow"><div><div class="nm">Open a saved log</div><div class="sub">Restores sessions from a saved SURGE file.</div></div>
         <label class="btn btn--sm" style="cursor:pointer">Open<input type="file" accept=".json,application/json" id="importFile" hidden></label></div>
-      ${store.mode==='folder'?`<div class="listrow"><div><div class="nm">Disconnect folder</div><div class="sub">Back to this device only.</div></div>
-        <button class="btn btn--sm btn--ghost" data-act="store-forget">Off</button></div>`:''}
+      ${store.mode==='folder'?`<div class="listrow"><div><div class="nm">Disconnect folder</div><div class="sub">Back to this device only. Nothing is deleted from the folder.</div></div>
+        <button class="btn btn--sm btn--ghost" data-act="store-forget">Disconnect</button></div>`:''}
+      <div class="listrow"><div><div class="nm">Keep this device protected</div><div class="sub">${storagePersisted()?'Protected storage is on for this browser.':'Protected storage is not confirmed in this browser yet.'}</div></div>
+        <button class="btn btn--sm btn--ghost" data-act="store-protect">Protect</button></div>
       <div class="listrow"><div><div class="nm" style="color:var(--signal)">Reset everything</div><div class="sub">Deletes the whole log here. ${store.mode==='folder'?'Also clears the folder copy next save.':''}</div></div>
         <button class="btn btn--sm btn--ghost" data-act="reset">Reset</button></div>
     </div>
     <div class="panel sect">
       <div class="note">SURGE is a log, not coaching. New to a lift? Have someone watch a set before adding weight. Stop if anything hurts.</div>
-      <div class="tiny muted" style="margin-top:14px">${store.mode==='folder'?'The log also saves to your folder as surge-log.json after each change.':'The log lives in this browser. Clearing site data wipes it. Save a file copy if that matters.'}</div>
+      <div class="tiny muted" style="margin-top:14px">${store.mode==='folder'?'Your log is saved '+friendlyStoreName()+' after every change. After clearing site data, reopen SURGE and pick the same folder to restore it.':'The log lives in this browser. Clearing site data wipes it. Connect a folder above if you want it to survive a reset.'}</div>
     </div>
   </div>`;
 }
@@ -1801,15 +1819,22 @@ document.addEventListener('click',ev=>{
     }
     case 'store-device': {
       store.mode='device'; store.handle=null;
-      try{ localStorage.setItem('surge.store',JSON.stringify({mode:'device'})); }catch(e){}
+      try{ localStorage.setItem('surge.store',JSON.stringify({mode:'device',savedAt:S&&S.savedAt||0})); }catch(e){}
       save(); render(); toast('Keeping it on this device.');
       break;
     }
     case 'store-pick': { pickFolder(); break; }
     case 'store-write': { writeFolderBackup(true); break; }
+    case 'store-protect': {
+      persistStorage().then(ok=>{
+        toast(ok?'Protected storage is on.':'This browser could not confirm protected storage.');
+        if(route()==='you') render();
+      });
+      break;
+    }
     case 'store-forget': {
       store.mode='device'; store.handle=null; store.folderName='';
-      try{ localStorage.setItem('surge.store',JSON.stringify({mode:'device'})); }catch(e){}
+      try{ localStorage.setItem('surge.store',JSON.stringify({mode:'device',savedAt:S&&S.savedAt||0})); }catch(e){}
       save(); render(); toast('Folder disconnected.');
       break;
     }
@@ -1875,6 +1900,15 @@ document.addEventListener('change',ev=>{
 
 /* ---------------- storage choice: device or your own cloud ---------------- */
 function folderSupported(){ return typeof window.showDirectoryPicker==='function'; }
+function storagePersisted(){ return !!(navigator.storage&&navigator.storage.persisted); }
+function persistStorage(){
+  if(!navigator.storage||!navigator.storage.persist) return Promise.resolve(false);
+  return navigator.storage.persist().catch(()=>false);
+}
+function friendlyStoreName(){
+  if(store.mode!=='folder') return 'this device';
+  return store.folderName?'in '+store.folderName:'in your folder';
+}
 async function idbPut(handle){
   return new Promise((res,rej)=>{
     try{
@@ -1897,24 +1931,60 @@ async function idbGet(){
 }
 async function pickFolder(){
   if(!folderSupported()){ toast('This browser needs the file option below.'); return; }
+  toast('Pick the folder where surge-log.json will live.');
   try{
     const h=await window.showDirectoryPicker({mode:'readwrite'});
-    store.handle=h; store.mode='folder'; store.folderName=h.name||'picked folder';
+    const next={mode:'folder',folderName:h.name||'picked folder'};
+    /* Keep the current log authoritative when re-linking a folder. If the picked folder has a newer cloud copy and this device is empty, restore it instead. */
+    const previousMode=store.mode;
+    const previousHandle=store.handle;
+    store.handle=h; store.folderName=next.folderName; store.mode='folder';
+    const cloudLog=await readFolderBackup().catch(()=>null);
+    const localSets=countSets(S);
+    const cloudSets=cloudLog&&cloudLog.sessions?countSets(cloudLog):0;
+    const cloudAt=cloudLog&&typeof cloudLog.savedAt==='number'?cloudLog.savedAt:0;
+    const deviceSaved=localStorage.getItem(KEY);
+    if(cloudLog&&cloudLog.sessions&&(localSets===0&&cloudSets>0||cloudAt>(S&&S.savedAt||0)+1000)){
+      S=normalize(cloudLog);
+      save();
+    }else{
+      save();
+    }
+    store.mode='folder'; store.folderName=next.folderName; store.handle=h;
     await idbPut(h);
-    try{ localStorage.setItem('surge.store',JSON.stringify({mode:'folder',folderName:store.folderName})); }catch(e){}
+    store.mode='folder'; store.folderName=next.folderName; store.handle=h;
+    try{ localStorage.setItem('surge.store',JSON.stringify({mode:'folder',folderName:store.folderName,savedAt:S&&S.savedAt||0})); }catch(e){}
     await writeFolderBackup(true);
     render();
-  }catch(e){ /* user cancelled */ }
+  }catch(e){
+    /* If permission is denied or picker is dismissed before choosing, keep device mode state. */
+    if(!store.handle){ store.mode='device'; }
+  }
 }
 async function writeFolderBackup(loud){
+  if(!store.handle) return false;
+  if(writing){ writeQueued=true; return true; }
+  writing=true;
   try{
-    if(!store.handle) return;
     const fh=await store.handle.getFileHandle('surge-log.json',{create:true});
-    const w=await fh.createWritable();
-    await w.write(JSON.stringify(S,null,2));
-    await w.close();
-    if(loud) toast('Saved to '+store.folderName+'.');
-  }catch(e){ if(loud) toast('Could not write to that folder.'); }
+    const data=JSON.stringify(Object.assign({},S,{savedAt:S&&S.savedAt||Date.now()}));
+    if(fh.createWritable){
+      const w=await fh.createWritable();
+      await w.write({type:'write',data});
+      await w.close();
+    }else{
+      throw new Error('no writable handle');
+    }
+    if(loud) toast('Saved '+friendlyStoreName()+'.');
+    dirty=false;
+    return true;
+  }catch(e){
+    if(loud) toast('Could not write to that folder.');
+    return false;
+  }finally{
+    writing=false;
+    if(writeQueued){ writeQueued=false; writeFolderBackup(false); }
+  }
 }
 async function readFolderBackup(){
   try{
@@ -1936,9 +2006,23 @@ async function hydrateStore(){
   store.handle=h;
   const d=await readFolderBackup();
   if(d&&d.sessions){
-    /* the fuller log wins: never let an older folder copy eat new sets */
-    if(countSets(d)>countSets(S)){ S=normalize(d); save(); }
+    const deviceSets=countSets(S);
+    const cloudSets=countSets(d);
+    const cloudAt=typeof d.savedAt==='number'?d.savedAt:0;
+    const deviceAt=S&&typeof S.savedAt==='number'?S.savedAt:0;
+    /* Restore if the cloud copy is newer; otherwise the fuller local copy lets the folder catch up on the next save. */
+    if(cloudSets>0&&(deviceSets===0||cloudAt>deviceAt+1000)){
+      S=normalize(d);
+      dirty=false;
+      save();
+    }else if(deviceSets>cloudSets||deviceAt>cloudAt){
+      dirty=true;
+      await writeFolderBackup(false);
+    }
   }
+  storeReady=true;
+  lastHydratedAt=Date.now();
+  persistStorage().catch(()=>false);
   render();
 }
 
