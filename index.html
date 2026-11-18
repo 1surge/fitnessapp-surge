@@ -229,7 +229,7 @@ button.tag{padding:8px 10px}
 .stepper .ctl{display:flex;align-items:center;justify-content:space-between;gap:6px;margin-top:3px}
 .stepper .val{font-family:var(--disp);font-weight:900;font-size:30px;line-height:1;font-variant-numeric:tabular-nums;min-width:2ch;text-align:center}
 .stepper .val small{font-family:var(--ui);font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.05em;margin-left:2px}
-.stepbtn{width:38px;height:38px;flex:0 0 auto;display:grid;place-items:center;border:1px solid var(--line2);border-radius:2px;font-size:19px;font-weight:600;color:var(--chalk);transition:background .12s,border-color .12s}
+.stepbtn{width:44px;height:44px;flex:0 0 auto;display:grid;place-items:center;border:1px solid var(--line2);border-radius:2px;font-size:19px;font-weight:600;color:var(--chalk);transition:background .12s,border-color .12s}
 .stepbtn:active{background:var(--panel2);border-color:var(--chalk)}
 .stepper input{width:100%;border:0;background:none;color:var(--chalk);font-family:var(--disp);font-weight:900;font-size:30px;text-align:center;font-variant-numeric:tabular-nums;padding:0;min-width:0;-moz-appearance:textfield}
 .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
@@ -311,6 +311,17 @@ body.hasdock #restPill{bottom:calc(var(--tabh) + var(--safe-b) + 216px)}
 .libcard .nm{font-family:var(--disp);font-weight:800;font-size:16px;line-height:.96;text-transform:uppercase;letter-spacing:.01em}
 .libcard .mt2{font-size:10px;color:var(--muted);margin-top:4px;letter-spacing:.03em;text-transform:uppercase;font-weight:700}
 .libcard .idx{position:absolute;top:7px;left:8px;z-index:2;font-family:var(--disp);font-weight:900;font-size:10px;letter-spacing:.14em;color:var(--chalk);background:color-mix(in srgb,var(--ink) 72%,transparent);padding:2px 5px;backdrop-filter:blur(6px)}
+.lv-badge{position:absolute;top:7px;right:8px;z-index:2;font-family:var(--ui);font-weight:800;font-size:9.5px;letter-spacing:.08em;text-transform:uppercase;color:var(--chalk);background:color-mix(in srgb,var(--ink) 78%,transparent);padding:3px 6px;backdrop-filter:blur(6px);border:1px solid color-mix(in srgb,var(--chalk) 16%,transparent)}
+.stage-now{font-family:var(--disp);font-weight:900;font-size:24px;line-height:1}
+.stepper-lv{display:flex;gap:8px}
+.lv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+.lv-band{border:1px solid var(--line2);border-radius:var(--r);background:var(--floor);padding:12px;text-align:left;min-height:58px}
+.lv-band b{display:block;font-family:var(--disp);font-weight:900;font-size:15px}
+.lv-band span{display:block;font-size:11px;color:var(--muted);margin-top:3px}
+.lv-band[aria-pressed="true"]{background:var(--chalk);color:var(--ink);border-color:var(--chalk)}
+.custom-note{border-left:2px solid var(--signal);padding-left:10px;color:var(--muted);font-size:12px;line-height:1.5;margin-top:8px}
+.custom-row{display:flex;align-items:center;gap:8px;margin-top:10px}
+.custom-val{font-family:var(--disp);font-weight:900;font-size:24px;min-width:2ch;text-align:center}
 .empty{padding:44px 20px;text-align:center;color:var(--muted);font-size:13px}
 
 /* ---------- progress ---------- */
@@ -498,7 +509,7 @@ const isBlocked=id=>exNeeds(id).some(t=>S.equipment[t]===false);
 
 /* ---------------- state ---------------- */
 function blank(){
-  return {v:2,profile:{units:'lb',onboarded:false},settings:{rest:90},equipment:blankEquip(),sessions:{},timer:null};
+  return {v:3,profile:{units:'lb',onboarded:false},settings:{rest:90},equipment:blankEquip(),sessions:{},timer:null,levels:{},levelPresets:{}};
 }
 let S=null;
 /* storage choice: 'device' or 'folder'. Folder handle lives in memory + IndexedDB. */
@@ -516,7 +527,9 @@ function normalize(o){
   o.settings=Object.assign(b.settings,o.settings||{});
   o.equipment=Object.assign(b.equipment,o.equipment||{});
   o.sessions=o.sessions&&typeof o.sessions==='object'?o.sessions:{};
-  if(!o.v) o.v=2;
+  o.levels=o.levels&&typeof o.levels==='object'?o.levels:{};
+  o.levelPresets=o.levelPresets&&typeof o.levelPresets==='object'?o.levelPresets:{};
+  if(!o.v) o.v=3;
   return o;
 }
 function load(){
@@ -557,6 +570,163 @@ function setTheme(tv){
   Lane.retint();
 }
 
+/* ---------------- Levels: per-exercise difficulty that is remembered ----------------
+   The app is not a fixed set program. Each exercise keeps its own Stage (1–120).
+   Stage changes the movement, work, rest, and the starting recommendation.
+   Changing the work moves that exercise to Custom; named presets live inside Custom. */
+const LV_MAX=120, LV_DEFAULT=37;
+const LV_BANDS=[
+  {lo:1,hi:20,name:'Floor',note:'everyday movement standard'},
+  {lo:21,hi:40,name:'Base',note:'standard loaded work'},
+  {lo:41,hi:60,name:'Build',note:'more volume'},
+  {lo:61,hi:80,name:'Loaded',note:'heavy work'},
+  {lo:81,hi:100,name:'Heavy',note:'very heavy standard movements'},
+  {lo:101,hi:120,name:'Peak',note:'peak standard — move deliberately'}
+];
+const LV_PRESETS={
+  Technique:{sets:2,repLo:12,repHi:15,rest:60},
+  Volume:{sets:4,repLo:8,repHi:10,rest:90},
+  Strength:{sets:4,repLo:4,repHi:6,rest:150},
+  Power:{sets:5,repLo:3,repHi:5,rest:180}
+};
+function bandFor(lv){ const n=clamp(lv|0,1,LV_MAX); return LV_BANDS.find(b=>n>=b.lo&&n<=b.hi)||LV_BANDS[5]; }
+function lvState(exId){
+  const o=(S&&S.levels&&S.levels[exId])||{};
+  const lv=clamp((o.lv==null?LV_DEFAULT:o.lv)|0,1,LV_MAX);
+  const presetNames=Object.keys((S&&S.levelPresets)||{});
+  const custom=(o.customPreset&&S.levelPresets[o.customPreset])||o.custom||null;
+  return {lv,custom,customPreset:o.customPreset||''};
+}
+function presetSource(exId){
+  const st=lvState(exId);
+  if(st.customPreset&&S.levelPresets[st.customPreset]) return {name:st.customPreset,vals:S.levelPresets[st.customPreset],saved:true};
+  if(st.custom) return {name:'Custom',vals:st.custom,saved:false};
+  return {name:'',vals:null,saved:false};
+}
+function stageSettings(lv){
+  const n=(clamp(lv|0,1,LV_MAX)-1)/(LV_MAX-1);
+  return {
+    sets:Math.max(1,Math.min(8,Math.round(2+2.6*n))),
+    repLo:Math.max(3,Math.round(15-12*n)),
+    repHi:Math.max(5,Math.round(15-10*n)),
+    rest:Math.round((45+135*n)/15)*15,
+    wMul:0.6+0.4*n
+  };
+}
+function ladderFor(exId){ return (D.ladders&&D.ladders[exId])||[]; }
+function variantFor(exId,lv){
+  const ladder=[...new Set([exId,...ladderFor(exId)])].filter(id=>EX[id]||ST[id]);
+  if(ladder.length<2) return exId;
+  const n=(clamp(lv|0,1,LV_MAX)-1)/(LV_MAX-1);
+  return ladder[Math.round(n*(ladder.length-1))];
+}
+function isCondBlock(block){ return /min|sec/i.test(String((block||{}).reps||'')); }
+function repsText(cfg){
+  const lo=Math.max(1,+cfg.repLo||8), hi=Math.max(lo,+cfg.repHi||lo);
+  return lo===hi?String(lo):String(lo)+'–'+String(hi);
+}
+function resolveBlock(dayId,exId){
+  const base=blockFor(dayId,exId);
+  if(!base) return null;
+  const st=lvState(base.ex);
+  const cfg=st.custom?{...st.custom}:{...stageSettings(st.lv)};
+  const variant=variantFor(base.ex,st.lv);
+  const cond=isCondBlock(base);
+  const block={...base,ex:variant,baseEx:base.ex,sets:cfg.sets,rest:cfg.rest||0,note:base.note||'',lvl:st.lv,custom:st.custom||null,customPreset:st.customPreset||'',presetName:st.customPreset||(st.custom?'Custom':''),cond};
+  if(cond){ block.reps=base.reps; } else { block.reps=repsText(cfg); }
+  block.effectiveReps=block.reps;
+  return block;
+}
+function blocksForDay(dayId){ return (P[dayId]?P[dayId].blocks:[]).map(b=>resolveBlock(dayId,b.ex)).filter(Boolean); }
+function setLv(exId,lv){
+  S.levels[exId]=S.levels[exId]||{};
+  S.levels[exId].lv=clamp(lv|0,1,LV_MAX);
+  S.levels[exId].custom=null;
+  S.levels[exId].customPreset='';
+  save();
+}
+function applyPreset(exId,name){
+  const vals=S.levelPresets[name]||LV_PRESETS[name];
+  if(!vals) return;
+  S.levels[exId]=Object.assign({},S.levels[exId]||{lv:LV_DEFAULT});
+  /* Keep the current Stage as the reference point, but save the preset object so
+     later user edits start from this chosen setup rather than the generic curve. */
+  S.levels[exId].custom={sets:+vals.sets||3,repLo:+vals.repLo||8,repHi:+vals.repHi||10,rest:+vals.rest||90};
+  S.levels[exId].customPreset=LV_PRESETS[name]?'':name;
+  save();
+}
+function saveCustomPreset(exId,name){
+  const st=lvState(exId);
+  if(!st.custom) return;
+  S.levelPresets[name]={...st.custom};
+  S.levels[exId]=S.levels[exId]||{};
+  S.levels[exId].customPreset=name;
+  save();
+}
+function stageLabel(exId){
+  const st=lvState(exId);
+  const v=variantFor(exId,st.lv);
+  const nm=(EX[v]||ST[v]||EX[exId]||{name:exId}).name;
+  if(st.custom||st.customPreset) return {text:(st.customPreset||'Custom')+' · '+nm,full:'Custom',custom:true};
+  return {text:'Stage '+st.lv+' · '+nm,full:'Stage '+st.lv+' · '+bandFor(st.lv).name,custom:false};
+}
+function levelTag(exId){
+  const label=stageLabel(exId);
+  return label.custom?`<span class="tag tag--sig">${esc(label.text)}</span>`:`<span class="tag">${esc(label.text)}</span>`;
+}
+function openLevel(id){
+  const e=EX[id]||ST[id]; if(!e) return;
+  const st=lvState(id), cfg=st.custom||stageSettings(st.lv);
+  const ladder=[...new Set([id,...ladderFor(id)])].filter(x=>EX[x]||ST[x]);
+  const current=variantFor(id,st.lv);
+  openSheet(`<div class="sheet-hd"><div style="min-width:0">
+      <div class="kicker">Difficulty for this exercise</div>
+      <h2 class="disp" style="font-size:34px;margin-top:4px">${esc(e.name)}</h2></div>
+    <button class="xbtn" data-act="close-sheet" aria-label="Close"><svg viewBox="0 0 24 24" width="17" height="17"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
+    <p class="small muted" style="margin-top:10px">Stage remembers your standard. Higher stages use harder movements and less reps. Edit the work and it becomes Custom.</p>
+    <div class="panel" style="margin-top:16px;padding:16px">
+      <div class="between"><div><div class="kicker">Current</div>
+      <div class="stage-now">${st.custom||st.customPreset?esc(st.customPreset||'Custom'):('Stage '+st.lv+' · '+bandFor(st.lv).name)}</div>
+      <div class="small muted" style="margin-top:5px">${esc((EX[current]||ST[current]||e).name)} · ${cfg.sets} × ${repsText(cfg)} · ${cfg.rest}s rest</div></div>
+      <div class="stepper-lv"><button class="stepbtn" data-act="lv-step" data-ex="${id}" data-d="-5" aria-label="Lower stage by five">−5</button><button class="stepbtn" data-act="lv-step" data-ex="${id}" data-d="5" aria-label="Raise stage by five">+5</button></div></div>
+    </div>
+    <div class="kicker" style="margin-top:20px">Stages</div>
+    <div class="lv-grid" style="margin-top:10px">
+      ${LV_BANDS.map(band=>`<button class="lv-band" data-act="lv-band" data-ex="${id}" data-lv="${band.lo}" aria-pressed="${st.lv>=band.lo&&st.lv<=band.hi}"><b>${band.name}</b><span>${band.lo}–${band.hi}</span></button>`).join('')}
+    </div>
+    <div class="kicker" style="margin-top:20px">Custom presets</div>
+    <p class="tiny muted" style="margin-top:7px">A preset saves the sets, reps and rest as your Custom setup.</p>
+    <div class="chips" style="margin-top:10px">
+      ${Object.entries(LV_PRESETS).map(([name,vals])=>`<button class="chip" data-act="lv-preset" data-ex="${id}" data-name="${name}" aria-pressed="${st.customPreset===name}">${name}</button>`).join('')}
+      ${Object.keys(S.levelPresets).map(name=>`<button class="chip" data-act="lv-preset" data-ex="${id}" data-name="${esc(name)}" aria-pressed="${st.customPreset===name}">${esc(name)}</button>`).join('')}
+    </div>
+    <div class="panel" style="margin-top:16px;padding:16px">
+      <div class="kicker">Custom work</div>
+      ${st.custom?`<div class="custom-note">Now Custom. Changing a Stage clears this and returns to the standard curve.</div>`:`<p class="tiny muted" style="margin-top:7px">Start from a preset above, or edit the numbers directly.</p>`}
+      ${['sets','repLo','repHi','rest'].map((field,ix)=>{
+        const label=['Sets','Reps low','Reps high','Rest seconds'][ix];
+        const step=field==='rest'?15:1;
+        return `<div class="custom-row">
+          <span class="small" style="flex:1">${label}</span>
+          <button class="stepbtn" data-act="lv-custom-step" data-ex="${id}" data-f="${field}" data-d="-${step}" aria-label="Less ${label}">−</button>
+          <span class="custom-val">${cfg[field]}</span>
+          <button class="stepbtn" data-act="lv-custom-step" data-ex="${id}" data-f="${field}" data-d="${step}" aria-label="More ${label}">+</button>
+        </div>`;}).join('')}
+      <button class="btn btn--block" style="margin-top:14px" data-act="lv-save-preset" data-ex="${id}">Save this Custom setup</button>
+      ${st.custom?`<button class="btn btn--ghost btn--block" style="margin-top:8px" data-act="lv-clear-custom" data-ex="${id}">Return to Stage ${st.lv}</button>`:''}
+    </div>
+    <div class="kicker" style="margin-top:20px">Movement by stage</div>
+    <div style="margin-top:8px">
+      ${ladder.length>1?ladder.map(vid=>{
+        const v=EX[vid]||ST[vid];
+        return `<button class="listrow" data-act="lv-movement" data-ex="${id}" data-to="${vid}">
+          <div style="min-width:0"><div class="nm">${esc(v.name)}</div><div class="sub">${esc((v.primary||[]).slice(0,2).join(' · '))} ${esc(v.equipment||'')}</div></div>
+          ${vid===current?`<span class="tag tag--sig">Current</span>`:`<span class="chev">›</span>`}
+        </button>`;}).join(''):`<div class="sub">This exercise stays the same movement; Stage changes the work.</div>`}
+    </div>
+    <div style="height:10px"></div>`);
+}
+
 /* ---------------- session model ---------------- */
 function dayForDate(k){
   const wd=parseKey(k).getDay();
@@ -575,8 +745,28 @@ function entryFor(sess,exId){
   return sess.entries[exId];
 }
 function blockFor(dayId,exId){ const d=P[dayId]; return d?d.blocks.find(b=>b.ex===exId):null; }
+function rawBlockFor(dayId,exId){
+  const direct=blockFor(dayId,exId);
+  if(direct) return direct;
+  const d=P[dayId]; if(!d) return null;
+  for(const b of d.blocks){
+    const r=resolveBlock(dayId,b.ex);
+    if(r&&r.ex===exId) return b;
+  }
+  return null;
+}
+function baseForDay(dayId,exId){
+  const raw=rawBlockFor(dayId,exId);
+  if(raw) return raw.ex;
+  return exId;
+}
+function resolvedBlockFor(dayId,exId){
+  const raw=rawBlockFor(dayId,exId);
+  if(!raw) return null;
+  return resolveBlock(dayId,raw.ex);
+}
 function ensureSets(sess,dayId,exId){
-  const e=entryFor(sess,exId), b=blockFor(dayId,exId);
+  const e=entryFor(sess,exId), b=resolvedBlockFor(dayId,exId);
   const n=b?b.sets:3;
   while(e.sets.length<n) e.sets.push({w:'',r:'',done:false});
   return e;
@@ -586,7 +776,7 @@ function sessionTotals(sess){
   let total=d.warmup.length+d.cooldown.length, done=0;
   d.warmup.forEach((_,i)=>{ if(sess.warmup[i]) done++; });
   d.cooldown.forEach((_,i)=>{ if(sess.cooldown[i]) done++; });
-  d.blocks.forEach(b=>{
+  blocksForDay(sess.dayId).forEach(b=>{
     const e=sess.entries[b.ex];
     const n=e&&e.sets.length?e.sets.length:b.sets;
     total+=n;
@@ -609,14 +799,19 @@ function lastPerformance(exId,beforeKey){
   return null;
 }
 function bestSet(exId){
+  const baseEx=baseForDay((S.sessions[todayKey()]||{}).dayId,exId)||exId;
+  const ids=[exId,baseEx];
   let best=0,at=null,w=0,r=0;
   Object.keys(S.sessions).forEach(k=>{
-    const e=S.sessions[k].entries&&S.sessions[k].entries[exId]; if(!e) return;
-    e.sets.forEach(s=>{
-      if(!s.done) return;
-      const ww=parseFloat(s.w)||0, rr=parseFloat(s.r)||0;
-      const score=ww>0?ww*(1+rr/30):rr;
-      if(score>best){ best=score; at=k; w=ww; r=rr; }
+    const o=S.sessions[k];
+    ids.forEach(id=>{
+      const e=o.entries&&o.entries[id]; if(!e) return;
+      e.sets.forEach(s=>{
+        if(!s.done) return;
+        const ww=parseFloat(s.w)||0, rr=parseFloat(s.r)||0;
+        const score=ww>0?ww*(1+rr/30):rr;
+        if(score>best){ best=score; at=k; w=ww; r=rr; }
+      });
     });
   });
   return {score:best,at,w,r};
@@ -631,25 +826,29 @@ function strengthSessions(){
 /* ---------------- suggestion: last → today → next ---------------- */
 function isCond(exId){
   const b=currentBlock(S.sessions[todayKey()])||{};
-  if(exId) { const bb=blockFor(S.sessions[todayKey()]&&S.sessions[todayKey()].dayId,exId); if(/min|sec/i.test(String((bb||{}).reps||''))) return true; }
-  return /min|sec/i.test(String((b||{}).reps||''));
+  if(exId) { const bb=resolvedBlockFor(S.sessions[todayKey()]&&S.sessions[todayKey()].dayId,exId); if(bb&&bb.cond) return true; if(b&&b.cond&&b.baseEx===exId) return true; }
+  return !!b.cond;
 }
 function suggest(exId,dayKey){
-  const b=blockFor(S.sessions[dayKey]&&S.sessions[dayKey].dayId,exId);
+  const dayId=S.sessions[dayKey]&&S.sessions[dayKey].dayId;
+  const b=resolvedBlockFor(dayId,exId) || blockFor(dayId,exId);
+  const baseEx=b&&b.baseEx?b.baseEx:baseForDay(dayId,exId);
   const range=b?String(b.reps):'8–10';
   const m=range.match(/(\d+)\s*[–\-]\s*(\d+)/);
   const lo=m?+m[1]:8, hi=m?+m[2]:10;
-  const last=lastPerformance(exId,dayKey);
+  const last=lastPerformance(baseEx===exId?exId:baseEx,dayKey);
   const inc=S.profile.units==='kg'?2.5:5;
-  if(!last) return {last:null,today:null,next:null,lo,hi,inc,first:true,cond:/min|sec/i.test(range)};
+  if(!last) return {last:null,today:null,next:null,lo,hi,inc,first:true,cond:!!(b&&b.cond)};
   const top=last.sets.reduce((a,s)=>{
     const w=parseFloat(s.w)||0,r=parseFloat(s.r)||0;
     if(!a) return {w,r};
     return (w*(1+r/30))>(a.w*(1+a.r/30))?{w,r}:a;
   },null);
   const hitTop=(parseFloat(top.r)||0)>=hi;
-  const today=top.w>0?(hitTop?top.w+inc:top.w):null;
-  return {last:top,lastKey:last.date,today,next:today!=null?today+inc:null,lo,hi,inc,first:false,cond:/min|sec/i.test(range)};
+  const st=lvState(baseEx), cfg=st.custom||stageSettings(st.lv);
+  const scaled=top.w>0?Math.round(top.w*cfg.wMul):null;
+  const today=top.w>0?(hitTop?scaled+inc:scaled):null;
+  return {last:top,lastKey:last.date,today,next:today!=null?today+inc:null,lo,hi,inc,first:false,cond:!!(b&&b.cond),lvl:st.lv,custom:!!st.custom,presetName:st.customPreset||''};
 }
 
 /* =====================================================================
@@ -947,7 +1146,7 @@ const Lane=(function(){
    SURGE v2 — screens, logging, actions
    ===================================================================== */
 const $=id=>document.getElementById(id);
-let LIB={tab:'lift',q:'',muscle:''};
+let LIB={tab:'lift',q:'',muscle:'',near:false};
 let REST_TICK=null;
 
 /* ---------------- week ---------------- */
@@ -975,8 +1174,9 @@ function doneCount(sess,exId){
 }
 function currentIdx(sess){
   const d=P[sess.dayId]; if(!d) return -1;
-  for(let i=0;i<d.blocks.length;i++){
-    const b=d.blocks[i];
+  const resolved=blocksForDay(sess.dayId);
+  for(let i=0;i<resolved.length;i++){
+    const b=resolved[i];
     const e=sess.entries[b.ex];
     const n=e&&e.sets.length?e.sets.length:b.sets;
     const dn=e?e.sets.filter(s=>s.done).length:0;
@@ -987,7 +1187,8 @@ function currentIdx(sess){
 }
 function allDone(sess){
   const d=P[sess.dayId]; if(!d) return false;
-  return d.blocks.every(b=>{
+  const resolved=blocksForDay(sess.dayId);
+  return resolved.every(b=>{
     const e=sess.entries[b.ex];
     if(e&&e.skipped) return true;
     const n=e&&e.sets.length?e.sets.length:b.sets;
@@ -1003,7 +1204,8 @@ function laneHTML(sess){
   // The lane only spans the movements you can actually get to — a skipped
   // station stays in the plan but leaves the track, so progress never stalls.
   const live=[];
-  if(d) d.blocks.forEach((b,i)=>{ if(!(sess.entries[b.ex]&&sess.entries[b.ex].skipped)) live.push({b,i}); });
+  const resolved=sess?blocksForDay(sess.dayId):[];
+  if(sess) resolved.forEach((b,i)=>{ if(!(sess.entries[b.ex]&&sess.entries[b.ex].skipped)) live.push({b,i}); });
 
   const idx=sess?currentIdx(sess):-1;
   const livePos=idx<0?live.length-1:live.findIndex(x=>x.i===idx);
@@ -1037,7 +1239,9 @@ setInterval(()=>{
 function tempoHTML(exId,key){
   const sg=suggest(exId,key), u=S.profile.units;
   if(sg.cond){
-    const b=blockFor(S.sessions[key]&&S.sessions[key].dayId,exId);
+    const dayId=S.sessions[key]&&S.sessions[key].dayId;
+    const b=resolvedBlockFor(dayId,exId)||blockFor(dayId,exId);
+    const baseEx=b&&b.baseEx?b.baseEx:baseForDay(dayId,exId);
     const target=b?String(b.reps):'';
     const lastT=sg.last&&sg.last.r!=null?sg.last:null;
     return `<div class="tempo">
@@ -1120,12 +1324,12 @@ function readyHTML(k){
       </button>
     </div>
     <div class="panel sect">
-      <div class="head"><h2>What's inside</h2><span class="tiny muted">${d.blocks.length} stations</span></div>
-      ${d.blocks.map((b,i)=>{const e=EX[b.ex]||ST[b.ex];return `
+      <div class="head"><h2>Today's movements</h2><span class="tiny muted">${d.blocks.length} stations</span></div>
+      ${blocksForDay(dayId).map((b,i)=>{const e=EX[b.ex]||ST[b.ex];const label=stageLabel(b.baseEx);return `
         <button class="listrow" data-act="open-ex" data-ex="${b.ex}">
           <div style="min-width:0">
             <div class="nm">${pad2(i+1)} · ${esc(e?e.name:b.ex)}</div>
-            <div class="sub">${b.sets} × ${esc(b.reps)}${b.note?' · '+esc(b.note):''}</div>
+            <div class="sub">${label.custom?esc(label.text):esc(label.full)} · ${b.sets} × ${esc(b.reps)}${b.note?' · '+esc(b.note):''}</div>
           </div>
           <span class="chev">›</span>
         </button>`}).join('')}
@@ -1139,9 +1343,10 @@ function readyHTML(k){
 
 function activeHTML(k,sess){
   const d=P[sess.dayId];
+  const resolved=blocksForDay(sess.dayId);
   const idx=currentIdx(sess);
   const finished=idx<0;
-  const b=finished?null:d.blocks[idx];
+  const b=finished?null:resolved[idx];
   const e=b?(EX[b.ex]||ST[b.ex]):null;
   const tot=sessionTotals(sess);
 
@@ -1170,14 +1375,16 @@ function activeHTML(k,sess){
       <div class="station-meta">
         <span class="tag tag--sig">${b.sets} × ${esc(b.reps)}</span>
         ${e.equipment&&e.equipment!=='None'?`<span class="tag">${esc(e.equipment)}</span>`:''}
+        <button class="tag" data-act="open-level" data-ex="${b.ex}" data-base="${b.baseEx}" style="cursor:pointer">Stage ${b.lvl} · ${bandFor(b.lvl).name} ›</button>
         <button class="tag" data-act="open-ex" data-ex="${b.ex}" style="cursor:pointer">Watch how ›</button>
       </div>
+      ${b.custom||b.customPreset?`<div class="tiny muted" style="margin-top:8px">${esc(b.customPreset||'Custom')} · ${b.sets} × ${esc(b.reps)} · ${b.rest}s rest</div>`:''}
       ${b.note?`<p class="tiny muted" style="margin-top:9px">${esc(b.note)}</p>`:''}
     </div>
     ${tempoHTML(b.ex,k)}
     <div style="display:flex;gap:8px;padding:12px var(--pad) 4px">
       <button class="btn btn--sm btn--ghost" style="flex:1" data-act="skip-ex" data-ex="${b.ex}">Skip</button>
-      <button class="btn btn--sm btn--ghost" style="flex:1" data-act="open-swap" data-ex="${b.ex}">Swap</button>
+      <button class="btn btn--sm btn--ghost" style="flex:1" data-act="open-swap" data-ex="${b.ex}" data-base="${b.baseEx}">Swap</button>
       <button class="btn btn--sm btn--ghost" style="flex:0 0 auto" data-act="pause" data-key="${k}">${sess.pausedAt?'Resume':'Pause'}</button>
     </div>
     ${logHTML(k,sess,b)}
@@ -1250,9 +1457,12 @@ function libItems(){
 }
 function libFiltered(){
   const q=(LIB.q||'').toLowerCase().trim();
+  const lvVals=Object.values(S.levels||{}).map(v=>clamp(v.lv==null?LV_DEFAULT:v.lv,1,LV_MAX));
+  const med=lvVals.length?lvVals.sort((a,b)=>a-b)[Math.floor(lvVals.length/2)]:LV_DEFAULT;
   return libItems().filter(e=>{
     if(q&&!(e.name+' '+(e.primary||[]).join(' ')+' '+(e.secondary||[]).join(' ')+' '+(e.equipment||'')).toLowerCase().includes(q)) return false;
     if(LIB.muscle&&!(e.primary||[]).some(m=>m.toLowerCase().includes(LIB.muscle.toLowerCase()))) return false;
+    if(LIB.near){ if(Math.abs(lvState(e.id).lv-med)>20) return false; }
     return true;
   });
 }
@@ -1276,8 +1486,9 @@ function viewLibrary(){
         ${LIB.q?`<button data-act="lib-clear" style="color:var(--muted);font-size:16px">×</button>`:''}
       </div>
       <div class="chips" data-swipe="chips">
-        <button class="chip" aria-pressed="${!LIB.muscle}" data-act="lib-muscle" data-m="">All</button>
+        <button class="chip" aria-pressed="${!LIB.muscle&&!LIB.near}" data-act="lib-muscle" data-m="">All</button>
         ${['Chest','Back','Shoulders','Arms','Quads','Hamstrings','Glutes','Core','Mobility'].map(m=>`<button class="chip" aria-pressed="${LIB.muscle===m}" data-act="lib-muscle" data-m="${m}">${m}</button>`).join('')}
+        <button class="chip" aria-pressed="${LIB.near}" data-act="lib-near">Near my level</button>
       </div>`}
     </div>
     ${isLearn?learnHTML():libGridHTML()}
@@ -1291,6 +1502,7 @@ function libGridHTML(){
     const vid=(e.videos&&e.videos[0])||null;
     return `<button class="libcard" data-act="open-ex" data-ex="${e.id}">
       <span class="idx">${pad2(i+1)}</span>
+      <span class="lv-badge">${stageLabel(e.id).custom?esc(S.levels[e.id]&&S.levels[e.id].customPreset||'Custom'):('Stage '+lvState(e.id).lv)}</span>
       <span class="ph"><img src="${th}" alt="" loading="lazy" decoding="async" draggable="false" onerror="this.onerror=null;this.src='https://i.ytimg.com/vi/${vid?vid.id:''}/hqdefault.jpg'"></span>
       <span class="tx"><span class="nm">${esc(e.name)}</span>
       <span class="mt2">${esc((e.primary||[]).slice(0,1).join(''))}</span></span>
@@ -1466,8 +1678,9 @@ function openExercise(id){
   const e=EX[id]||ST[id]; if(!e) return;
   const vids=e.videos||[];
   const k=todayKey(), sess=S.sessions[k];
-  const b=sess?blockFor(sess.dayId,id):null;
+  const b=sess?resolvedBlockFor(sess.dayId,id):null;
   const inPlan=b&&sess&&!sess.endedAt;
+  const label=stageLabel(id);
   openSheet(`
     <div class="sheet-hd"><div style="min-width:0">
       <div class="kicker">${esc((e.primary||[]).join(' · '))}</div>
@@ -1475,7 +1688,7 @@ function openExercise(id){
     </div><button class="xbtn" data-act="close-sheet" aria-label="Close"><svg viewBox="0 0 24 24" width="17" height="17"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <div class="station-meta" style="margin:12px 0 14px">
       ${e.equipment&&e.equipment!=='None'?`<span class="tag">${esc(e.equipment)}</span>`:''}
-      <span class="tag">${esc(e.difficulty||'All levels')}</span>
+      <button class="tag" data-act="open-level" data-ex="${id}" style="cursor:pointer">${esc(label.custom?(S.levels[id]&&S.levels[id].customPreset||'Custom'):('Stage '+lvState(id).lv+' · '+bandFor(lvState(id).lv).name))} ›</button>
     </div>
     ${inPlan?tempoHTML(id,k):''}
     ${vids.map((v,i)=>`<div style="margin-top:14px">
@@ -1515,7 +1728,7 @@ function openSwap(fromId){
     <button class="xbtn" data-act="close-sheet" aria-label="Close"><svg viewBox="0 0 24 24" width="17" height="17"><path d="M6 6l12 12M18 6L6 18"/></svg></button></div>
     <p class="small muted" style="margin:10px 0 14px">Same muscles, different gear. Logged sets stay put.</p>
     ${list.map(id=>{const e=EX[id];return `<button class="listrow" data-act="do-swap" data-from="${fromId}" data-to="${id}">
-      <div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="sub">${esc((e.primary||[]).slice(0,2).join(' · '))} ${esc(e.equipment||'')}</div></div>
+      <div style="min-width:0"><div class="nm">${esc(e.name)}</div><div class="sub">${esc((e.primary||[]).slice(0,2).join(' · '))} ${esc(e.equipment||'')} · keeps Stage ${lvState(fromId).lv}</div></div>
       <span class="chev">›</span></button>`}).join('')||`<div class="empty">No obvious swap for this one.</div>`}
   `);
 }
@@ -1554,8 +1767,7 @@ function currentBlock(sess){
   if(!sess||sess.endedAt||!sess.startedAt) return null;
   const i=currentIdx(sess);
   if(i<0) return null;
-  const d=P[sess.dayId];
-  return d?d.blocks[i]:null;
+  return blocksForDay(sess.dayId)[i]||null;
 }
 function syncDock(){
   const dock=$('dock');
@@ -1570,7 +1782,7 @@ function syncDock(){
   const ent=ensureSets(sess,sess.dayId,b.ex);
   const doneN=ent.sets.filter(s=>s.done).length;
   const d=draftFor(sess,b.ex), u=S.profile.units;
-  const cond=/min|sec/i.test(String((b||{}).reps||''));
+  const cond=!!b.cond;
 
   // Rebuild when the station changes OR the mode flips; otherwise just repaint values, so
   // focus and caret survive a re-render while someone is typing a number.
@@ -1684,10 +1896,80 @@ document.addEventListener('click',ev=>{
     }
     case 'lib-tab': LIB.tab=el.dataset.t; paintLibFull(); break;
     case 'lib-muscle': LIB.muscle=el.dataset.m; paintLibFull(); break;
-    case 'lib-clear': LIB.q=''; LIB.muscle=''; paintLibFull(); break;
+    case 'lib-near': LIB.near=!LIB.near; paintLibFull(); break;
+    case 'lib-clear': LIB.q=''; LIB.muscle=''; LIB.near=false; paintLibFull(); break;
+    case 'open-level': openLevel(el.dataset.base||el.dataset.ex); break;
+    case 'lv-band': {
+      const exId=el.dataset.ex, band=LV_BANDS.find(x=>x.lo===+el.dataset.lv);
+      if(!band) break;
+      setLv(exId,band.lo);
+      openLevel(exId);
+      render();
+      toast('Stage '+band.lo+' · '+band.name);
+      break;
+    }
+    case 'lv-step': {
+      const exId=el.dataset.ex, d=+el.dataset.d;
+      setLv(exId,lvState(exId).lv+d);
+      openLevel(exId);
+      render();
+      toast('Stage '+lvState(exId).lv+' · '+bandFor(lvState(exId).lv).name);
+      break;
+    }
+    case 'lv-preset': {
+      const exId=el.dataset.ex, name=el.dataset.name;
+      applyPreset(exId,name);
+      openLevel(exId);
+      render();
+      toast(name+' saved as Custom.');
+      break;
+    }
+    case 'lv-custom-step': {
+      const exId=el.dataset.ex, f=el.dataset.f, d=+el.dataset.d;
+      const st=lvState(exId);
+      const cfg=st.custom?{...st.custom}:{...stageSettings(st.lv)};
+      cfg[f]=clamp(Math.round((+cfg[f]||0)+d),f==='sets'?1:f==='rest'?0:1,f==='sets'?8:f==='rest'?300:60);
+      if(cfg.repHi<cfg.repLo) cfg.repHi=cfg.repLo;
+      S.levels[exId]=Object.assign({},S.levels[exId]||{lv:st.lv});
+      S.levels[exId].custom=cfg;
+      S.levels[exId].customPreset='';
+      save(); openLevel(exId); render();
+      break;
+    }
+    case 'lv-save-preset': {
+      const exId=el.dataset.ex;
+      const name=prompt('Name this Custom setup:','My setup');
+      if(!name) break;
+      const clean=name.trim().slice(0,24);
+      if(!clean) break;
+      if(LV_PRESETS[clean]){ toast('Use another name.'); break; }
+      saveCustomPreset(exId,clean);
+      openLevel(exId); render();
+      toast(clean+' saved.');
+      break;
+    }
+    case 'lv-clear-custom': {
+      const exId=el.dataset.ex;
+      setLv(exId,lvState(exId).lv);
+      openLevel(exId); render();
+      break;
+    }
+    case 'lv-movement': {
+      const exId=el.dataset.ex,to=el.dataset.to;
+      const ladder=[...new Set([exId,...ladderFor(exId)])].filter(x=>EX[x]||ST[x]);
+      const ix=ladder.indexOf(to);
+      if(ix<0) break;
+      const lv=ladder.length===1?lvState(exId).lv:Math.round(1+ix*(LV_MAX-1)/(ladder.length-1));
+      setLv(exId,lv);
+      /* For one-ladder cases, set a stage equivalent that lands on the selected movement. */
+      if(ladder.length>1) S.levels[exId].lv=clamp(Math.round(1+ix*(LV_MAX-1)/(ladder.length-1)),1,LV_MAX);
+      save(); openLevel(exId); render();
+      toast('Movement set to '+(EX[to]||ST[to]).name+' · Stage '+lvState(exId).lv);
+      break;
+    }
     case 'open-ex': openExercise(el.dataset.ex); break;
     case 'open-learn': openLearn(+el.dataset.i); break;
-    case 'open-swap': openSwap(el.dataset.ex); break;
+    case 'open-swap': openSwap(el.dataset.base||el.dataset.ex); break;
     case 'summary': openSummary(el.dataset.key||k); break;
     case 'play-vid': {
       const box=el.closest('.thumb-vid'), id=el.dataset.vid;
@@ -1721,7 +2003,7 @@ document.addEventListener('click',ev=>{
     case 'step': {
       if(!sess) break;
       const b=currentBlock(sess); if(!b) break;
-      const cond0=/min|sec/i.test(String((b||{}).reps||''));
+      const cond0=!!b.cond;
       const d=draftFor(sess,b.ex), f=el.dataset.f, dir=+el.dataset.d;
       const stepW=S.profile.units==='kg'?2.5:5;
       let v=parseFloat(d[f])||0;
@@ -1733,8 +2015,8 @@ document.addEventListener('click',ev=>{
     }
     case 'log-set': {
       if(!sess) break;
-      const exId=el.dataset.ex, b=blockFor(sess.dayId,exId); if(!b) break;
-      const cond0=/min|sec/i.test(String((b||{}).reps||''));
+      const exId=el.dataset.ex, b=currentBlock(sess); if(!b||b.ex!==exId) break;
+      const cond0=!!b.cond;
       const d=draftFor(sess,exId);
       const w=cond0?String(d.w||'').slice(0,40):d.w, r=parseFloat(d.r);
       if(cond0){
@@ -1793,10 +2075,22 @@ document.addEventListener('click',ev=>{
     }
     case 'do-swap': {
       if(!sess) break;
-      const from=el.dataset.from,to=el.dataset.to,b=blockFor(sess.dayId,from);
-      if(b){ b.ex=to; }
-      sess.autoSwaps=sess.autoSwaps||[]; sess.autoSwaps.push({from,to});
-      closeSheet(); save(); render(); toast('Swapped to '+(EX[to]||ST[to]).name);
+      const from=el.dataset.from,to=el.dataset.to;
+      const baseEx=baseForDay(sess.dayId,from);
+      const raw=rawBlockFor(sess.dayId,from);
+      if(!raw) break;
+      if(from!==baseEx){ raw.ex=baseEx; }
+      const st=lvState(baseEx);
+      raw.ex=to;
+      if(sess.entries[from]&&from!==to){
+        const saved=sess.entries[from];
+        delete sess.entries[from];
+        sess.entries[to]=saved;
+      }
+      S.levels[to]={lv:st.lv,custom:null,customPreset:''};
+      if(baseEx!==to) delete S.levels[baseEx];
+      sess.autoSwaps=sess.autoSwaps||[]; sess.autoSwaps.push({from:baseEx,to});
+      closeSheet(); save(); render(); toast('Swapped to '+(EX[to]||ST[to]).name+' · Stage '+lvState(to).lv);
       break;
     }
     case 'pause': {
@@ -2046,7 +2340,8 @@ function paintLibFull(){
   }
   if(chips){
     chips.querySelectorAll('.chip').forEach(c=>{
-      c.setAttribute('aria-pressed',String((c.dataset.m||'')===LIB.muscle));
+      if(c.dataset.act==='lib-near') c.setAttribute('aria-pressed',String(LIB.near));
+      else c.setAttribute('aria-pressed',String((c.dataset.m||'')===LIB.muscle&&!LIB.near));
     });
   }
   if(LIB.tab==='learn'){

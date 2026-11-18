@@ -63,7 +63,19 @@ check(not missing, f"muscle groups never trained: {missing}")
 # 6. learn content
 check(len(D['learn']) >= 10, "not enough education content")
 
-# 7. optional: re-verify every video still resolves
+# 7. stage ladders resolve and cover every programmed movement
+ladders = D.get('ladders', {})
+check(len(ladders) >= 34, f"only {len(ladders)} ladders")
+for base, ladder in ladders.items():
+    check(base in LIBIDS, f"ladder key {base} is not in library")
+    check(ladder, f"empty ladder for {base}")
+    for target in ladder:
+        check(target in LIBIDS, f"ladder {base} points at unknown {target}")
+program_ids = {b['ex'] for d in P.values() for b in d['blocks']}
+missing_ladders = program_ids - set(ladders)
+check(not missing_ladders, f"program exercises without ladders: {missing_ladders}")
+
+# 8. optional: re-verify every video still resolves
 if '--videos' in sys.argv:
     bad = []
     for e in D['exercises']:

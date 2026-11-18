@@ -9264,5 +9264,41 @@ window.DATA = {
  ]
 }
 
- ]
+ ],
+ "ladders": {
+  "goblet-squat": ["bodyweight-squat", "goblet-squat", "db-bulgarian-split-squat", "db-step-up", "db-walking-lunge", "bb-front-squat", "box-squat", "bb-back-squat"],
+  "db-bench-press": ["push-up", "db-bench-press", "db-close-grip-press", "bb-close-grip-bench", "bb-bench-press", "bw-chest-dip"],
+  "seated-cable-row": ["band-pull-apart", "db-row", "seated-cable-row", "tbar-row", "bb-bent-over-row"],
+  "db-rdl": ["glute-bridge", "db-hip-thrust", "db-rdl", "bb-rdl", "db-sumo-squat", "trap-bar-deadlift", "bb-deadlift"],
+  "db-lateral-raise": ["band-pull-apart", "db-lateral-raise", "cable-lateral-raise", "db-shoulder-press", "machine-shoulder-press", "bb-overhead-press"],
+  "dead-bug": ["bird-dog", "dead-bug", "mountain-climber", "side-plank", "hollow-hold", "bw-hanging-knee-raise", "hanging-leg-raise"],
+  "farmers-carry": ["db-shrug", "plate-pinch-hold", "farmers-carry"],
+  "leg-press": ["bodyweight-squat", "goblet-squat", "leg-press", "db-sumo-squat", "machine-hack-squat", "bb-back-squat"],
+  "lat-pulldown": ["band-pull-apart", "single-arm-pulldown", "lat-pulldown", "bw-chin-up", "bw-pull-up"],
+  "db-shoulder-press": ["db-lateral-raise", "db-shoulder-press", "machine-shoulder-press", "bb-overhead-press"],
+  "db-reverse-lunge": ["bodyweight-squat", "db-reverse-lunge", "db-bulgarian-split-squat", "db-walking-lunge", "bb-front-squat", "bb-back-squat"],
+  "cable-face-pull": ["band-pull-apart", "cable-face-pull", "db-reverse-fly", "y-raise"],
+  "db-curl": ["db-curl", "db-hammer-curl", "db-incline-curl", "machine-preacher-curl", "db-zottman-curl"],
+  "cable-triceps-pushdown": ["cable-triceps-pushdown", "db-overhead-triceps-extension", "bench-dip", "bb-close-grip-bench", "bw-chest-dip"],
+  "plank": ["bird-dog", "dead-bug", "plank", "side-plank", "hollow-hold", "hanging-leg-raise"],
+  "db-hip-thrust": ["glute-bridge", "db-hip-thrust", "machine-lying-leg-curl", "bb-rdl", "trap-bar-deadlift", "bb-deadlift"],
+  "incline-db-press": ["push-up", "incline-db-press", "db-bench-press", "decline-press", "bb-bench-press", "bw-chest-dip"],
+  "chest-supported-row": ["db-row", "chest-supported-row", "seated-cable-row", "tbar-row", "bb-bent-over-row"],
+  "leg-curl": ["glute-bridge", "leg-curl", "machine-lying-leg-curl", "bb-rdl", "nordic-curl"],
+  "calf-raise": ["calf-raise", "machine-seated-calf-raise", "sled-push"],
+  "cable-hip-abduction": ["cable-hip-abduction", "machine-hip-abduction", "cable-glute-kickback"],
+  "pallof-press": ["pallof-press", "cable-woodchop", "cable-crunch"],
+  "incline-walk": ["incline-walk", "sled-push", "battle-ropes", "assault-bike"],
+  "cat-cow": ["cat-cow", "worlds-greatest-stretch", "hip-90-90"],
+  "worlds-greatest-stretch": ["worlds-greatest-stretch"],
+  "hip-90-90": ["hip-90-90"],
+  "thoracic-rotation": ["thoracic-rotation"],
+  "dead-hang": ["dead-hang", "bw-hanging-knee-raise", "hanging-leg-raise"],
+  "band-pull-apart": ["band-pull-apart"],
+  "bodyweight-squat": ["bodyweight-squat", "goblet-squat", "db-sumo-squat", "bb-front-squat", "bb-back-squat"],
+  "push-up": ["push-up", "db-bench-press", "bb-bench-press", "bw-chest-dip"],
+  "cable-external-rotation": ["cable-external-rotation"],
+  "bird-dog": ["bird-dog", "dead-bug", "plank"],
+  "side-plank": ["bird-dog", "plank", "side-plank", "hollow-hold"]
+ }
 };
