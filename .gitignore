@@ -1,0 +1,45 @@
+# .gitignore — SURGE
+# Local-only generated/build artefacts — never commit these.
+# Keep this pattern in the repo root; the originals stay in this folder,
+# they just don't get tracked.
+
+# Build output & caches
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+build/
+dist/
+*.egg-info/
+
+# Logs (regenerated locally)
+*.log
+debug.log
+airtouch_debug.log
+
+# Visual QA artefacts (not product code)
+audit-shots/
+shots/
+screenshots/
+brand-refs/
+.impeccable/
+
+# Media blobs (not kept in git — hosted/generated locally)
+assets-v2/
+netlify-drop/
+
+# Old build artefacts & backups (not product code)
+_dev/
+*.bak.html
+
+# macOS / Windows noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.lnk
+
+# Editors
+.vscode/
+.idea/
+*.swp
+*.swo
